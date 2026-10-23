@@ -1,0 +1,9 @@
+# Pythonの仮想環境
+.venv/
+
+# Pythonのキャッシュファイル
+__pycache__/
+*.pyc
+
+# macOSの管理ファイル
+.DS_Store

@@ -16,6 +16,9 @@ def home():
 @app.get("/api/system")
 def get_system_info():
 
+    # 論理CPUごとの使用率をリストで取得
+    core_usage = psutil.cpu_percent(interval=None, percpu=True)
+
     # 前回の呼び出しからのCPU使用率を取得
     # 初回の値は参考値として扱う
     cpu = psutil.cpu_percent(interval=None)
@@ -27,6 +30,7 @@ def get_system_info():
     return {
         "cpu": cpu,
         "memory": memory.percent,
+        "cores": core_usage,
         "memory_total": round(memory.total / (1024**3), 2),
         "memory_used": round(memory.used / (1024**3), 2),
     }

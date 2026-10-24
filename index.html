@@ -149,6 +149,49 @@
       td:first-child {
         overflow-wrap: anywhere;
       }
+
+      /* CPUコア別モニター */
+.core-monitor {
+    margin-top: 30px;
+}
+
+.core-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 10px 0;
+}
+
+.core-row span:first-child {
+    width: 65px;
+}
+
+.core-row span:last-child {
+    width: 55px;
+    text-align: right;
+}
+
+.core-bar {
+    flex: 1;
+    height: 12px;
+    background: #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.core-fill {
+    height: 100%;
+    background: #3996b3;
+    border-radius: 8px;
+    transition: width 0.4s ease;
+}
+
+/* CPUコア別履歴グラフ */
+#core-history-chart {
+    display: block;
+    width: 100%;
+    height: 300px;
+}
     </style>
   </head>
 
@@ -181,6 +224,21 @@
           <p id="memory-detail">-- GiB</p>
         </div>
       </div>
+
+      <!-- CPUコア別の使用率を表示するエリア -->
+<section class="core-monitor">
+  <h2>CPU Cores</h2>
+  <div id="cpu-cores"></div>
+</section>
+
+<!-- CPUコア別の履歴グラフ -->
+<section class="card history">
+  <h2>CPU Core History</h2>
+  <p class="description">Last 60 seconds</p>
+
+  <!-- JavaScriptで折れ線を描画する -->
+  <canvas id="core-history-chart"></canvas>
+</section>
 
       <!-- CPU・メモリの履歴グラフ -->
       <section class="card history">
@@ -229,6 +287,102 @@
 
       // 最大60件のデータを保存
       const MAX_HISTORY = 60;
+
+      // 各CPUコアの履歴を保存する配列
+const coreHistory = [];
+
+// CPUコアの色
+const coreColors = [
+    "#50b5ff",
+    "#a78bfa",
+    "#34d399",
+    "#fbbf24",
+    "#fb7185",
+    "#22d3ee",
+    "#f97316",
+    "#c084fc"
+];
+
+// 新しいCPUコア使用率を記録する
+function addCoreHistory(cores) {
+
+    // 現在の8コアの使用率を保存
+    coreHistory.push([...cores]);
+
+    // 60件を超えたら古いデータを削除
+    if (coreHistory.length > MAX_HISTORY) {
+        coreHistory.shift();
+    }
+
+    // 最新の履歴でグラフを描画
+    drawCoreChart();
+}
+
+// CPUコア別の折れ線グラフを描く
+function drawCoreChart() {
+    const canvas = document.getElementById("core-history-chart");
+    const ctx = canvas.getContext("2d");
+
+    // Retinaディスプレイ対応
+    const dpr = window.devicePixelRatio || 1;
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+
+    if (width === 0 || height === 0) return;
+
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    ctx.clearRect(0, 0, width, height);
+
+    // グラフの余白
+    const left = 38;
+    const right = 12;
+    const top = 15;
+    const bottom = 25;
+
+    const graphWidth = width - left - right;
+    const graphHeight = height - top - bottom;
+
+    // 0〜100%の補助線
+    ctx.strokeStyle = "#374151";
+    ctx.fillStyle = "#9da8b8";
+    ctx.font = "12px Arial";
+
+    for (let value = 0; value <= 100; value += 25) {
+        const y = top + graphHeight * (1 - value / 100);
+
+        ctx.beginPath();
+        ctx.moveTo(left, y);
+        ctx.lineTo(width - right, y);
+        ctx.stroke();
+
+        ctx.fillText(value + "%", 0, y + 4);
+    }
+
+    // CPUコアごとに線を描く
+    const coreCount = coreHistory[0]?.length || 0;
+
+    for (let core = 0; core < coreCount; core++) {
+        ctx.beginPath();
+        ctx.strokeStyle = coreColors[core % coreColors.length];
+        ctx.lineWidth = 1.5;
+
+        coreHistory.forEach((sample, index) => {
+            const x = left + (index / (MAX_HISTORY - 1)) * graphWidth;
+            const y = top + graphHeight * (1 - sample[core] / 100);
+
+            if (index === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        });
+
+        ctx.stroke();
+    }
+}
 
       // 新しい測定値を履歴に追加する
       function addHistory(cpu, memory) {
@@ -334,12 +488,21 @@
           }
 
           // JSONをJavaScriptのオブジェクトに変換
-          const data = await response.json();
-          // 新しいCPU・メモリ使用率を履歴に記録する
-          addHistory(data.cpu, data.memory);
+const data = await response.json();
+
+// CPUコアごとの使用率を更新
+if (Array.isArray(data.cores)) {
+    // CPUコア別のバーを更新
+    updateCpuCores(data.cores);
+
+    // CPUコア別の履歴も記録
+    addCoreHistory(data.cores);
+}
+
+// 新しいCPU・メモリ使用率を履歴に記録する
+addHistory(data.cpu, data.memory);
           // グラフを再描画
           drawChart();
-
           // CPU使用率を表示
           document.getElementById("cpu").textContent =
             data.cpu.toFixed(1) + "%";
@@ -373,7 +536,10 @@
       setInterval(updateSystem, 1000);
 
       // ウィンドウの大きさが変わったら再描画
-      window.addEventListener("resize", drawChart);
+      window.addEventListener("resize", () => {
+    drawChart();
+    drawCoreChart();
+});
 
       // Pythonからプロセス一覧を取得する
       async function updateProcesses() {
@@ -419,7 +585,27 @@
         }
       }
 
-      // 最初のプロセス一覧を取得
+      // CPUコアごとの使用率を画面に表示する
+function updateCpuCores(cores) {
+    const container = document.getElementById("cpu-cores");
+　　　
+    // CPUコアごとのHTMLを生成
+    container.innerHTML = cores.map((usage, index) => `
+        <div class="core-row">
+            <span>Core ${index}</span>
+
+            <div class="core-bar">
+                <div
+                    class="core-fill"
+                    style="width: ${usage}%"
+                ></div>
+            </div>
+
+            <span>${usage.toFixed(1)}%</span>
+        </div>
+    `).join("");
+}
+            // 最初のプロセス一覧を取得
       updateProcesses();
 
       // 2秒ごとに更新する

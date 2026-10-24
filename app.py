@@ -1,7 +1,39 @@
 import psutil
 import time
+import subprocess
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
+
+
+def get_memory_pressure():
+    """macOSからメモリプレッシャーの状態を取得する"""
+
+    try:
+        # sysctlコマンドを実行してカーネルの情報を取得
+        result = subprocess.run(
+            ["sysctl", "-n", "kern.memorystatus_vm_pressure_level"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=True,
+        )
+
+        # 取得した文字列を整数に変換
+        level = int(result.stdout.strip())
+
+        # macOSの状態コードを表示用の文字列に変換
+        states = {
+            1: "NORMAL",
+            2: "WARN",
+            4: "CRITICAL",
+        }
+
+        return states.get(level, "UNKNOWN")
+
+    # コマンド失敗や値の変換エラーでもAPI全体を止めない
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return "UNKNOWN"
+
 
 # Webアプリケーションを作成する
 app = FastAPI()
@@ -80,6 +112,8 @@ def get_system_info():
         "swap_in_speed": round(swap_in_speed, 2),
         # 1秒あたりのスワップ書き込み速度
         "swap_out_speed": round(swap_out_speed, 2),
+        # macOSのメモリプレッシャー
+        "memory_pressure": get_memory_pressure(),
     }
 
 

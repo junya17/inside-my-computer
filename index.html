@@ -273,6 +273,16 @@
           <p id="swap-in">Swap In: -- MiB/s</p>
           <p id="swap-out">Swap Out: -- MiB/s</p>
         </div>
+
+        <!-- macOSのメモリプレッシャーを表示 -->
+        <div class="card">
+          <h2>Memory Pressure</h2>
+
+          <!-- 状態に応じてJavaScriptが文字と色を変更する -->
+          <div class="value" id="memory-pressure">--</div>
+
+          <p class="description">macOS memory pressure level</p>
+        </div>
       </div>
 
       <!-- CPUコア別の使用率を表示するエリア -->
@@ -607,6 +617,27 @@
           // RAMからSSDへの書き込み速度
           document.getElementById("swap-out").textContent =
             "Swap Out: " + data.swap_out_speed.toFixed(2) + " MiB/s";
+
+          // macOSのメモリプレッシャーを取得
+          const pressure = data.memory_pressure;
+
+          // 表示先のHTML要素を取得
+          const pressureElement = document.getElementById("memory-pressure");
+
+          // 状態ごとの文字色
+          const pressureColors = {
+            NORMAL: "#22c55e", // 緑：通常
+            WARN: "#eab308", // 黄：注意
+            CRITICAL: "#ef4444", // 赤：高負荷
+            UNKNOWN: "#9da8b8", // 灰：取得できない
+          };
+
+          // Pythonから受け取った状態を画面に表示
+          pressureElement.textContent = pressure ?? "UNKNOWN";
+
+          // 状態に応じて文字色を変更
+          pressureElement.style.color =
+            pressureColors[pressure] ?? pressureColors.UNKNOWN;
 
           // 新しいCPU・メモリ使用率を履歴に記録する
           addHistory(data.cpu, data.memory);

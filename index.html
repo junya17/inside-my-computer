@@ -266,8 +266,12 @@
             <div class="fill" id="swap-bar"></div>
           </div>
 
-          <!-- 使用容量と総容量 -->
+          <!-- スワップの使用容量 -->
           <p id="swap-detail">-- / -- GiB</p>
+
+          <!-- スワップの読み込み・書き込み速度 -->
+          <p id="swap-in">Swap In: -- MiB/s</p>
+          <p id="swap-out">Swap Out: -- MiB/s</p>
         </div>
       </div>
 
@@ -595,6 +599,14 @@
           // スワップの使用容量を表示
           document.getElementById("swap-detail").textContent =
             data.swap_used + " / " + data.swap_total + " GiB";
+
+          // SSDからRAMへの読み込み速度
+          document.getElementById("swap-in").textContent =
+            "Swap In: " + data.swap_in_speed.toFixed(2) + " MiB/s";
+
+          // RAMからSSDへの書き込み速度
+          document.getElementById("swap-out").textContent =
+            "Swap Out: " + data.swap_out_speed.toFixed(2) + " MiB/s";
 
           // 新しいCPU・メモリ使用率を履歴に記録する
           addHistory(data.cpu, data.memory);

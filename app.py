@@ -1,9 +1,16 @@
 import psutil
+import time
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
 # Webアプリケーションを作成する
 app = FastAPI()
+
+# 前回のスワップ統計を保存
+previous_swap = psutil.swap_memory()
+
+# 前回の測定時刻
+previous_swap_time = time.monotonic()
 
 
 # ブラウザのトップページを返す
@@ -31,6 +38,26 @@ def get_system_info():
     # macOSのスワップメモリ情報を取得
     swap = psutil.swap_memory()
 
+    # 前回の測定値を更新するため、グローバル変数を使用
+    global previous_swap, previous_swap_time
+
+    # 現在のスワップ統計と時刻
+    current_swap = psutil.swap_memory()
+    current_time = time.monotonic()
+
+    # 前回からの経過秒数
+    elapsed = max(current_time - previous_swap_time, 0.001)
+
+    # 累積カウンターの差分から転送速度を計算
+    swap_in_speed = max(0, current_swap.sin - previous_swap.sin) / elapsed / (1024**2)
+    swap_out_speed = (
+        max(0, current_swap.sout - previous_swap.sout) / elapsed / (1024**2)
+    )
+
+    # 次回の計算のために今回の値を保存
+    previous_swap = current_swap
+    previous_swap_time = current_time
+
     return {
         "cpu": cpu,
         "memory": memory.percent,
@@ -49,6 +76,10 @@ def get_system_info():
         "swap_used": round(swap.used / (1024**3), 2),
         # スワップ使用率（%）
         "swap_percent": swap.percent,
+        # 1秒あたりのスワップ読み込み速度
+        "swap_in_speed": round(swap_in_speed, 2),
+        # 1秒あたりのスワップ書き込み速度
+        "swap_out_speed": round(swap_out_speed, 2),
     }
 
 

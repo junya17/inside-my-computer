@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Inside My Computer</title>
+
+    <style>
+      /* ページ全体のデザイン */
+      body {
+        margin: 0;
+        padding: 40px 20px;
+        background: #10141b;
+        color: #f4f6fa;
+        font-family: Arial, sans-serif;
+      }
+
+      main {
+        max-width: 900px;
+        margin: auto;
+      }
+
+      h1 {
+        font-size: 30px;
+      }
+
+      .description {
+        color: #9da8b8;
+      }
+
+      /* CPU・メモリの表示カード */
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 20px;
+        margin-top: 30px;
+      }
+
+      .card {
+        padding: 24px;
+        border-radius: 14px;
+        background: #1c2430;
+      }
+
+      .value {
+        font-size: 42px;
+        font-weight: bold;
+        margin: 12px 0;
+      }
+
+      /* 使用率を横棒グラフで表示 */
+      .bar {
+        height: 12px;
+        background: #374151;
+        border-radius: 10px;
+        overflow: hidden;
+      }
+
+      .fill {
+        width: 0%;
+        height: 100%;
+        background: #50b5ff;
+        transition: width 0.5s;
+      }
+
+      #memory-bar {
+        background: #a78bfa;
+      }
+
+      #status {
+        margin-top: 24px;
+        color: #9da8b8;
+      }
+
+      #status {
+        margin-top: 24px;
+        color: #9da8b8;
+      }
+
+      /* ↓ ここから新しいCSSを追加 */
+
+      /* 時系列グラフのカード */
+      .history {
+        margin-top: 20px;
+      }
+
+      /* グラフの描画領域 */
+      #history-chart {
+        display: block;
+        width: 100%;
+        height: 260px;
+      }
+
+      /* グラフの凡例 */
+      .legend {
+        display: flex;
+        gap: 24px;
+        margin-top: 20px;
+      }
+
+      .cpu-label {
+        color: #50b5ff;
+      }
+
+      .memory-label {
+        color: #a78bfa;
+      }
+
+      /* プロセス一覧のカード */
+      .processes {
+        margin-top: 20px;
+      }
+
+      /* 画面が狭い場合は横スクロール */
+      .table-wrapper {
+        overflow-x: auto;
+      }
+
+      /* テーブル全体 */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+      }
+
+      /* セルの共通デザイン */
+      th,
+      td {
+        padding: 14px 10px;
+        border-bottom: 1px solid #374151;
+        text-align: left;
+        font-size: 14px;
+      }
+
+      /* 見出し */
+      th {
+        color: #9da8b8;
+        font-weight: normal;
+      }
+
+      /* 数値を右揃え */
+      th:not(:first-child),
+      td:not(:first-child) {
+        text-align: right;
+      }
+
+      /* 長いプロセス名を折り返す */
+      td:first-child {
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+
+  <body>
+    <main>
+      <h1>Inside My Computer</h1>
+
+      <p class="description">Real-time CPU & Memory Monitor</p>
+
+      <div class="cards">
+        <!-- CPU使用率 -->
+        <div class="card">
+          <h2>CPU</h2>
+          <div class="value" id="cpu">--%</div>
+
+          <div class="bar">
+            <div class="fill" id="cpu-bar"></div>
+          </div>
+        </div>
+
+        <!-- メモリ使用率 -->
+        <div class="card">
+          <h2>Memory</h2>
+          <div class="value" id="memory">--%</div>
+
+          <div class="bar">
+            <div class="fill" id="memory-bar"></div>
+          </div>
+
+          <p id="memory-detail">-- GiB</p>
+        </div>
+      </div>
+
+      <!-- CPU・メモリの履歴グラフ -->
+      <section class="card history">
+        <h2>Performance History</h2>
+        <p class="description">Last 60 seconds</p>
+
+        <!-- JavaScriptがここにグラフを描画する -->
+        <canvas id="history-chart"></canvas>
+
+        <p class="legend">
+          <span class="cpu-label">● CPU</span>
+          <span class="memory-label">● Memory</span>
+        </p>
+      </section>
+
+      <!-- プロセス監視エリア -->
+      <section class="card processes">
+        <h2>Top Processes</h2>
+
+        <p class="description">CPU使用率が高いプロセス TOP 10</p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Process</th>
+                <th>PID</th>
+                <th>CPU</th>
+                <th>Memory</th>
+              </tr>
+            </thead>
+
+            <!-- JavaScriptがプロセス一覧を挿入する -->
+            <tbody id="process-list"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <p id="status">接続中...</p>
+    </main>
+
+    <script>
+      // CPUとメモリの過去データを保存する配列
+      const cpuHistory = [];
+      const memoryHistory = [];
+
+      // 最大60件のデータを保存
+      const MAX_HISTORY = 60;
+
+      // 新しい測定値を履歴に追加する
+      function addHistory(cpu, memory) {
+        // 配列の末尾に新しいデータを追加
+        cpuHistory.push(cpu);
+        memoryHistory.push(memory);
+
+        // 60件を超えたら最も古いデータを削除
+        if (cpuHistory.length > MAX_HISTORY) {
+          cpuHistory.shift();
+          memoryHistory.shift();
+        }
+
+        // 最新データでグラフを描き直す
+        drawChart();
+      }
+
+      function drawChart() {
+        // canvasと描画コンテキストを取得
+        const canvas = document.getElementById("history-chart");
+        const ctx = canvas.getContext("2d");
+
+        // Retinaディスプレイでも鮮明に描画する
+        const dpr = window.devicePixelRatio || 1;
+
+        const width = canvas.clientWidth;
+        const height = canvas.clientHeight;
+
+        canvas.width = Math.round(width * dpr);
+        canvas.height = Math.round(height * dpr);
+
+        // CSSのピクセル座標で描画できるようにする
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        // 前回の描画を消去
+        ctx.clearRect(0, 0, width, height);
+
+        // グラフの余白
+        const left = 38;
+        const right = 12;
+        const top = 15;
+        const bottom = 25;
+
+        const graphWidth = width - left - right;
+        const graphHeight = height - top - bottom;
+
+        // 0〜100%の補助線を描く
+        ctx.strokeStyle = "#374151";
+        ctx.fillStyle = "#9da8b8";
+        ctx.font = "12px Arial";
+
+        for (let value = 0; value <= 100; value += 25) {
+          // 使用率をY座標に変換
+          const y = top + graphHeight * (1 - value / 100);
+
+          ctx.beginPath();
+          ctx.moveTo(left, y);
+          ctx.lineTo(width - right, y);
+          ctx.stroke();
+
+          ctx.fillText(value + "%", 0, y + 4);
+        }
+
+        // 履歴データを折れ線に変換する
+        function drawLine(history, color) {
+          if (history.length === 0) return;
+
+          ctx.beginPath();
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2;
+
+          history.forEach((value, index) => {
+            // X座標：60件分の位置を固定
+            const x = left + (index / (MAX_HISTORY - 1)) * graphWidth;
+
+            // Y座標：使用率を上下の位置に変換
+            const y = top + graphHeight * (1 - value / 100);
+
+            if (index === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          });
+
+          ctx.stroke();
+        }
+
+        // CPUとメモリを別の色で描画
+        drawLine(cpuHistory, "#50b5ff");
+        drawLine(memoryHistory, "#a78bfa");
+      }
+
+      // PythonのAPIから情報を取得する
+      async function updateSystem() {
+        try {
+          // HTTP GETリクエストを送信
+          const response = await fetch("/api/system");
+
+          // 通信エラーを検出
+          if (!response.ok) {
+            throw new Error("API error");
+          }
+
+          // JSONをJavaScriptのオブジェクトに変換
+          const data = await response.json();
+          // 新しいCPU・メモリ使用率を履歴に記録する
+          addHistory(data.cpu, data.memory);
+          // グラフを再描画
+          drawChart();
+
+          // CPU使用率を表示
+          document.getElementById("cpu").textContent =
+            data.cpu.toFixed(1) + "%";
+
+          // メモリ使用率を表示
+          document.getElementById("memory").textContent =
+            data.memory.toFixed(1) + "%";
+
+          // グラフの横幅を変更
+          document.getElementById("cpu-bar").style.width = data.cpu + "%";
+
+          document.getElementById("memory-bar").style.width = data.memory + "%";
+
+          // メモリ容量を表示
+          document.getElementById("memory-detail").textContent =
+            data.memory_used + " / " + data.memory_total + " GiB";
+
+          document.getElementById("status").textContent =
+            "接続中・1秒ごとに更新";
+        } catch (error) {
+          // サーバーに接続できない場合
+          document.getElementById("status").textContent = "接続エラー";
+          console.error(error);
+        }
+      }
+
+      // 最初のデータを取得
+      updateSystem();
+
+      // 1秒ごとに繰り返す
+      setInterval(updateSystem, 1000);
+
+      // ウィンドウの大きさが変わったら再描画
+      window.addEventListener("resize", drawChart);
+
+      // Pythonからプロセス一覧を取得する
+      async function updateProcesses() {
+        try {
+          // プロセス一覧APIを呼び出す
+          const response = await fetch("/api/processes");
+
+          if (!response.ok) {
+            throw new Error("プロセス取得エラー");
+          }
+
+          // JSON配列を取得
+          const processes = await response.json();
+
+          // テーブルの表示先
+          const tbody = document.getElementById("process-list");
+
+          // 前回の表示を削除
+          tbody.replaceChildren();
+
+          // プロセスごとにテーブル行を作成
+          processes.forEach((proc) => {
+            const row = document.createElement("tr");
+
+            // textContentで文字列を安全に表示
+            const values = [
+              proc.name,
+              proc.pid,
+              proc.cpu.toFixed(1) + "%",
+              proc.memory.toFixed(1) + "%",
+            ];
+
+            values.forEach((value) => {
+              const cell = document.createElement("td");
+              cell.textContent = value;
+              row.appendChild(cell);
+            });
+
+            tbody.appendChild(row);
+          });
+        } catch (error) {
+          console.error("プロセス取得失敗:", error);
+        }
+      }
+
+      // 最初のプロセス一覧を取得
+      updateProcesses();
+
+      // 2秒ごとに更新する
+      setInterval(updateProcesses, 2000);
+    </script>
+  </body>
+</html>

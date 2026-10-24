@@ -192,6 +192,30 @@
         width: 100%;
         height: 300px;
       }
+
+      /* CPUコアの凡例を横に並べる */
+      .core-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px 24px;
+        margin-top: 20px;
+      }
+
+      /* 凡例の1項目 */
+      .core-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: #d1d5db;
+      }
+
+      /* CPUコアを識別する色付きの線 */
+      .core-legend-color {
+        width: 18px;
+        height: 4px;
+        border-radius: 4px;
+      }
     </style>
   </head>
 
@@ -236,9 +260,24 @@
         <h2>CPU Core History</h2>
         <p class="description">Last 60 seconds</p>
 
-        <!-- JavaScriptで折れ線を描画する -->
+        <!-- CPUコアの履歴を描画する場所 -->
         <canvas id="core-history-chart"></canvas>
-      </section>
+
+        <!-- CPUコア別の履歴グラフ -->
+<section class="card history">
+  <h2>CPU Core History</h2>
+  <p class="description">Last 60 seconds</p>
+
+  <!-- CPUコアの履歴を描画する場所 -->
+  <canvas id="core-history-chart"></canvas>
+
+  <!-- CPUコアの色と名前 -->
+  <div id="core-legend" class="core-legend"></div>
+</section>
+
+<!-- CPU・メモリの履歴グラフ -->
+<section class="card history">
+  <h2>Performance History</h2>
 
       <!-- CPU・メモリの履歴グラフ -->
       <section class="card history">
@@ -303,6 +342,32 @@
         "#c084fc",
       ];
 
+      // CPUコアの名前と色を表示する
+      function updateCoreLegend(coreCount) {
+        const legend = document.getElementById("core-legend");
+
+        // 既存の凡例を消す
+        legend.replaceChildren();
+
+        // CPUコアの数だけ凡例を作る
+        for (let i = 0; i < coreCount; i++) {
+          const item = document.createElement("div");
+          item.className = "core-legend-item";
+
+          // グラフの線と同じ色を使用する
+          const color = document.createElement("span");
+          color.className = "core-legend-color";
+          color.style.backgroundColor = coreColors[i % coreColors.length];
+
+          // CPUコアの名前
+          const name = document.createElement("span");
+          name.textContent = `Core ${i}`;
+
+          item.append(color, name);
+          legend.appendChild(item);
+        }
+      }
+
       // 新しいCPUコア使用率を記録する
       function addCoreHistory(cores) {
         // 現在の8コアの使用率を保存
@@ -319,9 +384,19 @@
 
       // CPUコア別の折れ線グラフを描く
       function drawCoreChart() {
-        const canvas = document.getElementById("core-history-chart");
-        const ctx = canvas.getContext("2d");
+  // HTMLからcanvasを取得
+  const canvas = document.getElementById("core-history-chart");
 
+  // canvasが見つからなければ処理を中止
+  if (!canvas) {
+    console.error("core-history-chart が見つかりません");
+    return;
+  }
+
+  // canvasに描画するための機能を取得
+  const ctx = canvas.getContext("2d");
+
+  // 以下は既存の描画処理をそのまま残す
         // Retinaディスプレイ対応
         const dpr = window.devicePixelRatio || 1;
         const width = canvas.clientWidth;
@@ -494,10 +569,12 @@
             // CPUコア別のバーを更新
             updateCpuCores(data.cores);
 
-            // CPUコア別の履歴も記録
+            // CPUコア別の履歴グラフを更新
             addCoreHistory(data.cores);
-          }
 
+            // CPUコアの名前と色を表示
+            updateCoreLegend(data.cores.length);
+          }
           // 新しいCPU・メモリ使用率を履歴に記録する
           addHistory(data.cpu, data.memory);
           // グラフを再描画

@@ -216,6 +216,11 @@
         height: 4px;
         border-radius: 4px;
       }
+
+      /* Swap使用率バーはオレンジ色 */
+      #swap-bar {
+        background: #f59e0b;
+      }
     </style>
   </head>
 
@@ -246,6 +251,23 @@
           </div>
 
           <p id="memory-detail">-- GiB</p>
+          <!-- 利用可能なメモリを表示 -->
+          <p id="memory-available">Available: -- GiB</p>
+        </div>
+        <!-- スワップメモリの監視カード -->
+        <div class="card">
+          <h2>Swap</h2>
+
+          <!-- 使用率 -->
+          <div class="value" id="swap">--%</div>
+
+          <!-- 使用率バー -->
+          <div class="bar">
+            <div class="fill" id="swap-bar"></div>
+          </div>
+
+          <!-- 使用容量と総容量 -->
+          <p id="swap-detail">-- / -- GiB</p>
         </div>
       </div>
 
@@ -262,23 +284,9 @@
 
         <!-- CPUコアの履歴を描画する場所 -->
         <canvas id="core-history-chart"></canvas>
-
-        <!-- CPUコア別の履歴グラフ -->
-<section class="card history">
-  <h2>CPU Core History</h2>
-  <p class="description">Last 60 seconds</p>
-
-  <!-- CPUコアの履歴を描画する場所 -->
-  <canvas id="core-history-chart"></canvas>
-
-  <!-- CPUコアの色と名前 -->
-  <div id="core-legend" class="core-legend"></div>
-</section>
-
-<!-- CPU・メモリの履歴グラフ -->
-<section class="card history">
-  <h2>Performance History</h2>
-
+        <!-- CPUコアの色と名前 -->
+        <div id="core-legend" class="core-legend"></div>
+      </section>
       <!-- CPU・メモリの履歴グラフ -->
       <section class="card history">
         <h2>Performance History</h2>
@@ -384,19 +392,19 @@
 
       // CPUコア別の折れ線グラフを描く
       function drawCoreChart() {
-  // HTMLからcanvasを取得
-  const canvas = document.getElementById("core-history-chart");
+        // HTMLからcanvasを取得
+        const canvas = document.getElementById("core-history-chart");
 
-  // canvasが見つからなければ処理を中止
-  if (!canvas) {
-    console.error("core-history-chart が見つかりません");
-    return;
-  }
+        // canvasが見つからなければ処理を中止
+        if (!canvas) {
+          console.error("core-history-chart が見つかりません");
+          return;
+        }
 
-  // canvasに描画するための機能を取得
-  const ctx = canvas.getContext("2d");
+        // canvasに描画するための機能を取得
+        const ctx = canvas.getContext("2d");
 
-  // 以下は既存の描画処理をそのまま残す
+        // 以下は既存の描画処理をそのまま残す
         // Retinaディスプレイ対応
         const dpr = window.devicePixelRatio || 1;
         const width = canvas.clientWidth;
@@ -575,6 +583,19 @@
             // CPUコアの名前と色を表示
             updateCoreLegend(data.cores.length);
           }
+
+          // スワップ使用率を表示
+          document.getElementById("swap").textContent =
+            data.swap_percent.toFixed(1) + "%";
+
+          // スワップ使用率バーの長さを変更
+          document.getElementById("swap-bar").style.width =
+            data.swap_percent + "%";
+
+          // スワップの使用容量を表示
+          document.getElementById("swap-detail").textContent =
+            data.swap_used + " / " + data.swap_total + " GiB";
+
           // 新しいCPU・メモリ使用率を履歴に記録する
           addHistory(data.cpu, data.memory);
           // グラフを再描画
@@ -592,9 +613,13 @@
 
           document.getElementById("memory-bar").style.width = data.memory + "%";
 
-          // メモリ容量を表示
+          // 使用率と同じ基準でメモリ容量を表示
           document.getElementById("memory-detail").textContent =
-            data.memory_used + " / " + data.memory_total + " GiB";
+            data.memory_unavailable + " / " + data.memory_total + " GiB";
+
+          // 利用可能なメモリ容量を表示
+          document.getElementById("memory-available").textContent =
+            "Available: " + data.memory_available + " GiB";
 
           document.getElementById("status").textContent =
             "接続中・1秒ごとに更新";

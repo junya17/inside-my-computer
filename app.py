@@ -26,13 +26,29 @@ def get_system_info():
     # メモリ情報をOSから取得
     memory = psutil.virtual_memory()
 
-    # Pythonの辞書を返すとFastAPIがJSONに変換する
+    # Pythonの辞書を返すとFastAPIがJSONに変換す
+
+    # macOSのスワップメモリ情報を取得
+    swap = psutil.swap_memory()
+
     return {
         "cpu": cpu,
         "memory": memory.percent,
         "cores": core_usage,
+        # 物理メモリの総容量
         "memory_total": round(memory.total / (1024**3), 2),
+        # psutilが報告する使用中メモリ
         "memory_used": round(memory.used / (1024**3), 2),
+        # 新しく追加：利用可能なメモリ
+        "memory_available": round(memory.available / (1024**3), 2),
+        # 新しく追加：利用可能量を引いた容量
+        "memory_unavailable": round((memory.total - memory.available) / (1024**3), 2),
+        # スワップ領域の総容量（GiB）
+        "swap_total": round(swap.total / (1024**3), 2),
+        # 現在使用中のスワップ容量（GiB）
+        "swap_used": round(swap.used / (1024**3), 2),
+        # スワップ使用率（%）
+        "swap_percent": swap.percent,
     }
 
 

@@ -1,27 +1,239 @@
-import psutil
 import time
 import subprocess
-from fastapi import FastAPI
+from pathlib import Path
+
+import psutil
+from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse
 
 
+# ========================================
+# 1. 基本設定
+# ========================================
+
+app = FastAPI(title="Inside My Computer")
+
+# app.py が存在するディレクトリ
+BASE_DIR = Path(__file__).resolve().parent
+
+# 単位変換
+MIB = 1024**2
+GIB = 1024**3
+
+# 前回の測定結果を保存
+previous_disk = None
+previous_disk_time = None
+
+previous_network = None
+previous_network_time = None
+
+previous_swap = None
+previous_swap_time = None
+
+# プロセスのCPU時間を保存
+# キー: (PID, 作成時刻)
+# 値: (CPU累積時間, 測定時刻)
+previous_cpu_times = {}
+
+
+# ========================================
+# 2. 共通関数
+# ========================================
+
+
+def bytes_to_mib(value):
+    """バイトをMiBに変換する"""
+    return round(value / MIB, 2)
+
+
+def bytes_to_gib(value):
+    """バイトをGiBに変換する"""
+    return round(value / GIB, 2)
+
+
+def calculate_speed(current, previous, elapsed):
+    """
+    累積カウンターの差分からMiB/秒を計算する。
+
+    current : 今回の累積バイト数
+    previous: 前回の累積バイト数
+    elapsed : 経過秒数
+    """
+    if elapsed <= 0:
+        return 0.0
+
+    difference = max(0, current - previous)
+    return round(difference / elapsed / MIB, 2)
+
+
+# ========================================
+# 3. Disk I/O
+# ========================================
+
+
+def get_disk_speed():
+    global previous_disk, previous_disk_time
+
+    current = psutil.disk_io_counters()
+    now = time.monotonic()
+
+    # ディスク情報が取得できない場合
+    if current is None:
+        return {
+            "read_speed": 0.0,
+            "write_speed": 0.0,
+        }
+
+    # 初回は比較対象がないため0を返す
+    if previous_disk is None:
+        previous_disk = current
+        previous_disk_time = now
+
+        return {
+            "read_speed": 0.0,
+            "write_speed": 0.0,
+        }
+
+    elapsed = now - previous_disk_time
+
+    # 累積バイト数の差分から速度を計算
+    read_speed = calculate_speed(
+        current.read_bytes,
+        previous_disk.read_bytes,
+        elapsed,
+    )
+
+    write_speed = calculate_speed(
+        current.write_bytes,
+        previous_disk.write_bytes,
+        elapsed,
+    )
+
+    # 次回のために測定値を更新
+    previous_disk = current
+    previous_disk_time = now
+
+    return {
+        "read_speed": read_speed,
+        "write_speed": write_speed,
+    }
+
+
+# ========================================
+# 4. Network I/O
+# ========================================
+
+
+def get_network_speed():
+    global previous_network, previous_network_time
+
+    current = psutil.net_io_counters()
+    now = time.monotonic()
+
+    # ネットワーク情報が取得できない場合
+    if current is None:
+        return {
+            "download": 0.0,
+            "upload": 0.0,
+        }
+
+    if previous_network is None:
+        previous_network = current
+        previous_network_time = now
+
+        return {
+            "download": 0.0,
+            "upload": 0.0,
+        }
+
+    elapsed = now - previous_network_time
+
+    download = calculate_speed(
+        current.bytes_recv,
+        previous_network.bytes_recv,
+        elapsed,
+    )
+
+    upload = calculate_speed(
+        current.bytes_sent,
+        previous_network.bytes_sent,
+        elapsed,
+    )
+
+    previous_network = current
+    previous_network_time = now
+
+    return {
+        "download": download,
+        "upload": upload,
+    }
+
+
+# ========================================
+# 5. Swap I/O
+# ========================================
+
+
+def get_swap_info():
+    global previous_swap, previous_swap_time
+
+    current = psutil.swap_memory()
+    now = time.monotonic()
+
+    swap_in_speed = 0.0
+    swap_out_speed = 0.0
+
+    if previous_swap is not None:
+        elapsed = now - previous_swap_time
+
+        swap_in_speed = calculate_speed(
+            current.sin,
+            previous_swap.sin,
+            elapsed,
+        )
+
+        swap_out_speed = calculate_speed(
+            current.sout,
+            previous_swap.sout,
+            elapsed,
+        )
+
+    # 今回の測定値を保存
+    previous_swap = current
+    previous_swap_time = now
+
+    return {
+        "swap_total": bytes_to_gib(current.total),
+        "swap_used": bytes_to_gib(current.used),
+        "swap_percent": current.percent,
+        "swap_in_speed": swap_in_speed,
+        "swap_out_speed": swap_out_speed,
+    }
+
+
+# ========================================
+# 6. macOS Memory Pressure
+# ========================================
+
+
 def get_memory_pressure():
-    """macOSからメモリプレッシャーの状態を取得する"""
+    """macOSのメモリプレッシャーを取得する"""
 
     try:
-        # sysctlコマンドを実行してカーネルの情報を取得
         result = subprocess.run(
-            ["sysctl", "-n", "kern.memorystatus_vm_pressure_level"],
+            [
+                "sysctl",
+                "-n",
+                "kern.memorystatus_vm_pressure_level",
+            ],
             capture_output=True,
             text=True,
             timeout=2,
             check=True,
         )
 
-        # 取得した文字列を整数に変換
         level = int(result.stdout.strip())
 
-        # macOSの状態コードを表示用の文字列に変換
         states = {
             1: "NORMAL",
             2: "WARN",
@@ -30,124 +242,135 @@ def get_memory_pressure():
 
         return states.get(level, "UNKNOWN")
 
-    # コマンド失敗や値の変換エラーでもAPI全体を止めない
     except (OSError, ValueError, subprocess.SubprocessError):
         return "UNKNOWN"
 
 
-# Webアプリケーションを作成する
-app = FastAPI()
-
-# 前回のスワップ統計を保存
-previous_swap = psutil.swap_memory()
-
-# 前回の測定時刻
-previous_swap_time = time.monotonic()
+# ========================================
+# 7. HTML・CSS・JavaScript
+# ========================================
 
 
-# ブラウザのトップページを返す
 @app.get("/")
 def home():
-    return FileResponse("index.html")
+    """トップページを返す"""
+    return FileResponse(BASE_DIR / "index.html")
 
 
-# CPU・メモリ情報をJSON形式で返すAPI
-@app.get("/api/system")
-def get_system_info():
-
-    # 論理CPUごとの使用率をリストで取得
-    core_usage = psutil.cpu_percent(interval=None, percpu=True)
-
-    # 前回の呼び出しからのCPU使用率を取得
-    # 初回の値は参考値として扱う
-    cpu = psutil.cpu_percent(interval=None)
-
-    # メモリ情報をOSから取得
-    memory = psutil.virtual_memory()
-
-    # Pythonの辞書を返すとFastAPIがJSONに変換す
-
-    # macOSのスワップメモリ情報を取得
-    swap = psutil.swap_memory()
-
-    # 前回の測定値を更新するため、グローバル変数を使用
-    global previous_swap, previous_swap_time
-
-    # 現在のスワップ統計と時刻
-    current_swap = psutil.swap_memory()
-    current_time = time.monotonic()
-
-    # 前回からの経過秒数
-    elapsed = max(current_time - previous_swap_time, 0.001)
-
-    # 累積カウンターの差分から転送速度を計算
-    swap_in_speed = max(0, current_swap.sin - previous_swap.sin) / elapsed / (1024**2)
-    swap_out_speed = (
-        max(0, current_swap.sout - previous_swap.sout) / elapsed / (1024**2)
+@app.get("/style.css")
+def get_css():
+    """CSSファイルを返す"""
+    return FileResponse(
+        BASE_DIR / "style.css",
+        media_type="text/css",
     )
 
-    # 次回の計算のために今回の値を保存
-    previous_swap = current_swap
-    previous_swap_time = current_time
+
+@app.get("/script.js")
+def get_javascript():
+    """JavaScriptファイルを返す"""
+    return FileResponse(
+        BASE_DIR / "script.js",
+        media_type="text/javascript",
+    )
+
+
+# ========================================
+# 8. システム情報API
+# ========================================
+
+
+@app.get("/api/system")
+def get_system_info():
+    """CPU・RAM・Swap・Disk・Networkの情報を返す"""
+
+    # CPU使用率
+    cpu = psutil.cpu_percent(interval=None)
+    cores = psutil.cpu_percent(interval=None, percpu=True)
+
+    # 物理メモリ
+    memory = psutil.virtual_memory()
+
+    # 各種I/O情報
+    swap = get_swap_info()
+    disk = get_disk_speed()
+    network = get_network_speed()
 
     return {
+        # CPU
         "cpu": cpu,
+        "cores": cores,
+        # RAM
         "memory": memory.percent,
-        "cores": core_usage,
-        # 物理メモリの総容量
-        "memory_total": round(memory.total / (1024**3), 2),
-        # psutilが報告する使用中メモリ
-        "memory_used": round(memory.used / (1024**3), 2),
-        # 新しく追加：利用可能なメモリ
-        "memory_available": round(memory.available / (1024**3), 2),
-        # 新しく追加：利用可能量を引いた容量
-        "memory_unavailable": round((memory.total - memory.available) / (1024**3), 2),
-        # スワップ領域の総容量（GiB）
-        "swap_total": round(swap.total / (1024**3), 2),
-        # 現在使用中のスワップ容量（GiB）
-        "swap_used": round(swap.used / (1024**3), 2),
-        # スワップ使用率（%）
-        "swap_percent": swap.percent,
-        # 1秒あたりのスワップ読み込み速度
-        "swap_in_speed": round(swap_in_speed, 2),
-        # 1秒あたりのスワップ書き込み速度
-        "swap_out_speed": round(swap_out_speed, 2),
-        # macOSのメモリプレッシャー
+        "memory_total": bytes_to_gib(memory.total),
+        "memory_used": bytes_to_gib(memory.used),
+        "memory_available": bytes_to_gib(memory.available),
+        "memory_unavailable": bytes_to_gib(memory.total - memory.available),
+        # Swap
+        **swap,
+        # Memory Pressure
         "memory_pressure": get_memory_pressure(),
+        # Disk I/O
+        "disk_read_speed": disk["read_speed"],
+        "disk_write_speed": disk["write_speed"],
+        # Network I/O
+        "network_download_speed": network["download"],
+        "network_upload_speed": network["upload"],
     }
 
 
-# プロセスごとのCPU使用率を記録するための辞書
-# キーはPID（プロセスID）
-previous_cpu_times = {}
+# ========================================
+# 9. プロセス情報API
+# ========================================
 
 
 @app.get("/api/processes")
-def get_processes():
+def get_processes(
+    sort: str = Query(
+        default="cpu",
+        pattern="^(cpu|rss)$",
+    ),
+):
+    """
+    プロセスごとのCPU・メモリ使用量を取得する。
+
+    sort=cpu : CPU使用率順
+    sort=rss : RSS使用量順
+    """
 
     global previous_cpu_times
 
     processes = []
     current_cpu_times = {}
 
-    # 前回の測定時刻からの経過時間を計算
-    import time
-
     now = time.monotonic()
 
-    # OSから実行中のプロセスを取得
-    for proc in psutil.process_iter(["pid", "name", "memory_percent", "create_time"]):
+    # OSから実行中のプロセスを列挙
+    for proc in psutil.process_iter(
+        [
+            "pid",
+            "name",
+            "memory_percent",
+            "memory_info",
+            "create_time",
+        ]
+    ):
         try:
             info = proc.info
 
-            # プロセスのCPU時間を取得
+            # ----------------------------------------
+            # CPU使用率の計算
+            # ----------------------------------------
+
             cpu_times = proc.cpu_times()
             cpu_total = cpu_times.user + cpu_times.system
 
-            # PIDと作成時刻の組み合わせで識別
-            key = (info["pid"], info["create_time"])
+            # PIDの再利用を考慮して作成時刻も使う
+            key = (
+                info["pid"],
+                info["create_time"],
+            )
 
-            # 前回のCPU時間と比較する
             previous = previous_cpu_times.get(key)
 
             cpu_percent = 0.0
@@ -157,29 +380,74 @@ def get_processes():
                 elapsed = now - old_time
 
                 if elapsed > 0:
-                    cpu_percent = max(0.0, (cpu_total - old_cpu) / elapsed * 100)
+                    cpu_percent = max(
+                        0.0,
+                        (cpu_total - old_cpu) / elapsed * 100,
+                    )
 
-            # 次回の測定に使用する
-            current_cpu_times[key] = (cpu_total, now)
+            # 次回のCPU計算用に保存
+            current_cpu_times[key] = (
+                cpu_total,
+                now,
+            )
+
+            # ----------------------------------------
+            # RSS（物理メモリ使用量）
+            # ----------------------------------------
+
+            memory_info = info.get("memory_info")
+
+            rss_mib = (
+                round(memory_info.rss / MIB, 1) if memory_info is not None else None
+            )
+
+            # ----------------------------------------
+            # プロセス情報を追加
+            # ----------------------------------------
 
             processes.append(
                 {
                     "pid": info["pid"],
                     "name": info["name"] or "Unknown",
                     "cpu": round(cpu_percent, 1),
-                    "memory": round(info["memory_percent"] or 0, 1),
+                    "memory": round(
+                        info["memory_percent"] or 0,
+                        1,
+                    ),
+                    "rss_mib": rss_mib,
                 }
             )
 
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            # 終了したプロセスや権限のないプロセスは無視
+        except (
+            psutil.NoSuchProcess,
+            psutil.AccessDenied,
+            psutil.ZombieProcess,
+        ):
+            # 終了したプロセスや権限のないものは飛ばす
             continue
 
-    # 古い測定値を新しいものに置き換える
+    # CPU時間の測定結果を更新
     previous_cpu_times = current_cpu_times
 
-    # CPU使用率が高い順に並べ替え
-    processes.sort(key=lambda p: p["cpu"], reverse=True)
+    # ----------------------------------------
+    # 並び順を切り替える
+    # ----------------------------------------
 
-    # 上位10件を返す
+    if sort == "rss":
+        # RSSが取得できないプロセスは最後にする
+        processes.sort(
+            key=lambda p: (
+                p["rss_mib"] is not None,
+                p["rss_mib"] if p["rss_mib"] is not None else 0,
+            ),
+            reverse=True,
+        )
+
+    else:
+        processes.sort(
+            key=lambda p: p["cpu"],
+            reverse=True,
+        )
+
+    # 上位10プロセスを返す
     return processes[:10]

@@ -1,9 +1,9 @@
+import os
 import time
 import subprocess
 from pathlib import Path
-
 import psutil
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import FileResponse
 
 
@@ -409,6 +409,8 @@ def get_processes(
                 {
                     "pid": info["pid"],
                     "name": info["name"] or "Unknown",
+                    # PIDの再利用を判定するための作成時刻
+                    "create_time": info["create_time"],
                     "cpu": round(cpu_percent, 1),
                     "memory": round(
                         info["memory_percent"] or 0,
@@ -451,3 +453,210 @@ def get_processes(
 
     # 上位10プロセスを返す
     return processes[:10]
+
+
+# ========================================
+# 10. 個別プロセス監視API
+# ========================================
+
+
+@app.get("/api/processes/{pid}")
+def get_process_detail(pid: int):
+    """
+    PIDを指定してプロセス情報を取得する。
+    Top 10の順位には影響されない。
+    """
+
+    try:
+        # PIDを指定してプロセスを取得
+        process = psutil.Process(pid)
+
+        # プロセスの物理メモリ使用量
+        memory = process.memory_info()
+
+        # プロセスが作られた時刻
+        create_time = process.create_time()
+
+        # ブラウザへJSON形式で返す
+        return {
+            "pid": pid,
+            "name": process.name(),
+            "create_time": create_time,
+            "rss_mib": round(memory.rss / MIB, 1),
+        }
+
+    except (psutil.NoSuchProcess, psutil.ZombieProcess):
+        # プロセスが終了した場合
+        raise HTTPException(
+            status_code=404,
+            detail="Process not found",
+        )
+
+    except psutil.AccessDenied:
+        # OSがアクセスを許可しなかった場合
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied",
+        )
+
+
+# ========================================
+# 11. Process Inspector API
+# ========================================
+
+
+@app.get("/api/processes/{pid}/inspect")
+def inspect_process(pid: int):
+    """
+    指定したPIDの詳細情報を取得する。
+    Process Inspector画面で使用する。
+    """
+
+    try:
+        # PIDからプロセスオブジェクトを取得
+        process = psutil.Process(pid)
+
+        # プロセスのメモリ情報
+        memory = process.memory_info()
+
+        # CPUの累積実行時間
+        cpu_times = process.cpu_times()
+
+        # プロセスの詳細情報をJSONで返す
+        return {
+            "pid": pid,
+            # プロセス名
+            "name": process.name(),
+            # PID再利用を検出するための作成時刻
+            "create_time": process.create_time(),
+            # プロセスの状態
+            "status": process.status(),
+            # 物理メモリ使用量（MiB）
+            "rss_mib": round(memory.rss / MIB, 2),
+            # 仮想メモリサイズ（MiB）
+            "vms_mib": round(memory.vms / MIB, 2),
+            # OSスレッド数
+            "threads": process.num_threads(),
+            # 累積CPU時間（秒）
+            "cpu_times": {
+                "user": cpu_times.user,
+                "system": cpu_times.system,
+            },
+        }
+
+    except (psutil.NoSuchProcess, psutil.ZombieProcess):
+        # プロセスが存在しない場合
+        raise HTTPException(
+            status_code=404,
+            detail="Process not found",
+        )
+
+    except psutil.AccessDenied:
+        # macOSが情報取得を拒否した場合
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied",
+        )
+
+
+# ========================================
+# 12. Thread Inspector
+# ========================================
+
+
+@app.get("/api/processes/{pid}/threads")
+def inspect_threads(pid: int):
+    """
+    指定したプロセス内のOSスレッドを取得する。
+
+    各スレッドについて以下を返す。
+    - スレッドID
+    - User CPU Time
+    - System CPU Time
+    """
+
+    try:
+        # PIDからプロセスを取得
+        process = psutil.Process(pid)
+
+        # プロセス内のスレッド一覧を取得
+        threads = process.threads()
+
+        # JSONで返すデータを作成
+        thread_list = []
+
+        for thread in threads:
+            thread_list.append(
+                {
+                    # OSが管理するスレッド識別番号
+                    "tid": thread.id,
+                    # ユーザーモードの累積CPU時間
+                    "user_time": round(thread.user_time, 6),
+                    # カーネルモードの累積CPU時間
+                    "system_time": round(thread.system_time, 6),
+                }
+            )
+
+        return {
+            "pid": pid,
+            "name": process.name(),
+            "create_time": process.create_time(),
+            "thread_count": len(thread_list),
+            "threads": thread_list,
+        }
+
+    except (psutil.NoSuchProcess, psutil.ZombieProcess):
+        raise HTTPException(status_code=404, detail="Process not found")
+
+    except psutil.AccessDenied:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+
+# ========================================
+# 13. サーバープロセスの情報
+# ========================================
+
+
+@app.get("/api/debug/server")
+def debug_server():
+    """
+    現在APIリクエストを処理している
+    PythonプロセスのPIDを取得する。
+    """
+
+    return {
+        "pid": os.getpid(),
+        "ppid": os.getppid(),
+    }
+
+    # ========================================
+
+
+# 14. サーバー自身のスレッド情報
+# ========================================
+
+
+@app.get("/api/debug/threads")
+def debug_threads():
+    """
+    FastAPIサーバー自身のOSスレッドを取得する。
+    """
+
+    # 現在のプロセス自身を取得
+    process = psutil.Process(os.getpid())
+
+    # OSスレッド一覧を取得
+    threads = process.threads()
+
+    return {
+        "pid": process.pid,
+        "thread_count": len(threads),
+        "threads": [
+            {
+                "tid": thread.id,
+                "user_time": thread.user_time,
+                "system_time": thread.system_time,
+            }
+            for thread in threads
+        ],
+    }

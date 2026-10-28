@@ -310,3 +310,78 @@ td:first-child {
   font-size: clamp(22px, 2.5vw, 32px);
   overflow-wrap: anywhere;
 }
+
+
+/* ========================================
+   12. Process Inspector
+   ======================================== */
+
+/* 詳細情報を2列のグリッドで配置 */
+.inspector-grid {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(200px, 1fr)
+  );
+  gap: 16px;
+  margin-top: 20px;
+}
+
+/* 個別の情報カード */
+.inspector-item {
+  padding: 20px;
+  background: #151c26;
+  border: 1px solid #374151;
+  border-radius: 12px;
+}
+
+/* 項目名 */
+.inspector-item span {
+  display: block;
+  color: #9da8b8;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+/* 数値 */
+.inspector-item strong {
+  display: block;
+  color: #f4f6fa;
+  font-size: clamp(18px, 2.5vw, 26px);
+  overflow-wrap: anywhere;
+}
+
+
+/* ========================================
+   Thread Inspector
+   ======================================== */
+
+/* スレッド一覧の余白 */
+.thread-inspector .table-wrapper {
+    margin-top: 16px;
+}
+
+/* CPU時間とCPU使用率を見やすくする */
+.thread-inspector td {
+    font-variant-numeric: tabular-nums;
+}
+
+/* スレッドIDを強調 */
+.thread-inspector td:first-child {
+    font-weight: 600;
+}
+
+/* CPU使用率のバー */
+.thread-cpu-bar {
+    height: 6px;
+    margin-top: 6px;
+    background: rgba(148, 163, 184, 0.18);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.thread-cpu-fill {
+    height: 100%;
+    background: #50b5ff;
+    border-radius: inherit;
+}

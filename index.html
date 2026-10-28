@@ -182,22 +182,88 @@
       </section>
 
       <!-- ========================================
-           8. 選択したプロセス
-           ======================================== -->
+     8. Process Inspector
+     ======================================== -->
       <section class="card history">
-        <h2>Selected Process</h2>
+        <h2>Process Inspector</h2>
 
+        <!-- 選択中のプロセス -->
         <div class="selected-process">
           <p id="selected-process-name">No process selected</p>
 
-          <p id="selected-process-pid">
-            Click a process to monitor its memory.
-          </p>
+          <p id="selected-process-pid">Click a process to inspect it.</p>
+        </div>
+
+        <!-- プロセスの詳細情報 -->
+        <div class="inspector-grid">
+          <div class="inspector-item">
+            <span>Resident Memory (RSS)</span>
+            <strong id="inspector-rss">-- MiB</strong>
+          </div>
+
+          <div class="inspector-item">
+            <span>Virtual Memory (VMS)</span>
+            <strong id="inspector-vms">-- GiB</strong>
+          </div>
+
+          <div class="inspector-item">
+            <span>Threads</span>
+            <strong id="inspector-threads">--</strong>
+          </div>
+
+          <div class="inspector-item">
+            <span>Status</span>
+            <strong id="inspector-status">--</strong>
+          </div>
+
+          <div class="inspector-item">
+            <span>User CPU Time</span>
+            <strong id="inspector-user-time">-- s</strong>
+          </div>
+
+          <div class="inspector-item">
+            <span>System CPU Time</span>
+            <strong id="inspector-system-time">-- s</strong>
+          </div>
         </div>
       </section>
 
       <!-- ========================================
-           9. プロセスメモリ履歴
+     9. Thread Inspector
+     ======================================== -->
+      <section class="card processes thread-inspector">
+        <h2>Thread Inspector</h2>
+
+        <!-- 選択中のプロセスとスレッド数 -->
+        <p id="thread-inspector-status" class="description" role="status">
+          Select a process to inspect its threads.
+        </p>
+
+        <!-- スレッド一覧。横幅が狭い場合はスクロール -->
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Thread ID</th>
+                <th>User CPU Time</th>
+                <th>System CPU Time</th>
+                <th>CPU Usage</th>
+              </tr>
+            </thead>
+
+            <!-- JavaScriptがスレッドの行を生成する -->
+            <tbody id="thread-list"></tbody>
+          </table>
+        </div>
+
+        <p class="description">
+          CPU Usage is calculated from CPU time differences. 100% represents one
+          logical CPU.
+        </p>
+      </section>
+
+      <!-- ========================================
+           10. プロセスメモリ履歴
            ======================================== -->
       <section class="card history">
         <h2>Process Memory History</h2>

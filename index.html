@@ -245,9 +245,10 @@
             <thead>
               <tr>
                 <th>Thread ID</th>
-                <th>User CPU Time</th>
-                <th>System CPU Time</th>
-                <th>CPU Usage</th>
+                <th>User CPU</th>
+                <th>System CPU</th>
+                <th>CPU %</th>
+                <th>State</th>
               </tr>
             </thead>
 
@@ -263,6 +264,37 @@
       </section>
 
       <!-- ========================================
+     Thread CPU Timeline
+     ======================================== -->
+      <section class="card history">
+        <h2>Thread CPU Timeline</h2>
+
+        <p id="thread-timeline-status" class="description">
+          Select a process to start monitoring.
+        </p>
+
+        <!-- スレッドごとのCPU使用率を描画 -->
+        <canvas id="thread-cpu-chart"></canvas>
+
+        <!-- スレッドごとの色とIDを表示 -->
+        <div id="thread-cpu-legend" class="core-legend"></div>
+
+        <p class="description">CPU usage history · Last 60 samples</p>
+      </section>
+
+      <!-- ========================================
+     Thread State Timeline
+     ======================================== -->
+      <section class="thread-state-section">
+        <h3>Thread State Timeline</h3>
+        <p>Sampled macOS thread states · Last 120 seconds</p>
+
+        <canvas id="thread-state-chart" width="1000" height="300"> </canvas>
+
+        <p id="thread-state-status"></p>
+      </section>
+
+      <!-- ========================================
            10. プロセスメモリ履歴
            ======================================== -->
       <section class="card history">
@@ -274,6 +306,21 @@
 
         <!-- 選択したプロセスのRSSを描画 -->
         <canvas id="process-memory-chart"></canvas>
+      </section>
+
+      <!-- ========================================
+     Process CPU Timeline
+     ======================================== -->
+      <section class="card history">
+        <h2>Process CPU Timeline</h2>
+
+        <!-- 現在の監視対象とCPU使用率 -->
+        <p id="process-cpu-status">Select a process to start monitoring.</p>
+
+        <!-- プロセス全体のCPU使用率を描画 -->
+        <canvas id="process-cpu-chart"></canvas>
+
+        <p class="description">Process CPU usage · Last 60 samples</p>
       </section>
 
       <!-- ========================================

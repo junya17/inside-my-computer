@@ -7,3 +7,12 @@ __pycache__/
 
 # macOSの管理ファイル
 .DS_Store
+
+# macOS native binary
+/native/libproc_threads_json
+
+# Local backups and debug artifacts
+script.backup.js
+script.before_fix.js
+
+requirements-before-fix.txt

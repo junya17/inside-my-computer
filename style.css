@@ -385,3 +385,80 @@ td:first-child {
     background: #50b5ff;
     border-radius: inherit;
 }
+
+
+/* ========================================
+   Thread CPU Timeline
+   ======================================== */
+
+/* 既存の履歴グラフと同じサイズ感にする */
+#thread-cpu-chart {
+    display: block;
+    width: 100%;
+    height: 240px;
+}
+
+/* 凡例を折り返し可能にする */
+#thread-cpu-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+/* スレッドの色を示す小さな四角 */
+.thread-legend-color {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+/* スレッドIDと色を横並びにする */
+.thread-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+}
+
+
+/* ========================================
+   Process CPU Timeline
+   ======================================== */
+
+/* CPU履歴グラフの表示領域 */
+#process-cpu-chart {
+    display: block;
+    width: 100%;
+    height: 240px;
+}
+
+
+/* ========================================
+   Thread State Timeline
+   Canvasの異常な横幅拡大を防止
+   ======================================== */
+
+.thread-state-section {
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+}
+
+#thread-state-chart {
+    display: block;
+
+    /* 親要素の幅に収める */
+    width: 100%;
+    max-width: 100%;
+
+    /* 高さは固定 */
+    height: 300px;
+
+    /* 内部解像度の変更に影響されない */
+    box-sizing: border-box;
+
+    background: transparent;
+}

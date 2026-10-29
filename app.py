@@ -1,5 +1,6 @@
 import os
 import time
+import json
 import subprocess
 from pathlib import Path
 import psutil
@@ -15,6 +16,8 @@ app = FastAPI(title="Inside My Computer")
 
 # app.py が存在するディレクトリ
 BASE_DIR = Path(__file__).resolve().parent
+# macOSのスレッド情報を取得するC言語の実行ファイル
+LIBPROC_HELPER = BASE_DIR / "native" / "libproc_threads_json"
 
 # 単位変換
 MIB = 1024**2
@@ -560,56 +563,123 @@ def inspect_process(pid: int):
 
 
 # ========================================
-# 12. Thread Inspector
+# 12. Thread Inspector（macOS libproc版）
 # ========================================
 
 
 @app.get("/api/processes/{pid}/threads")
 def inspect_threads(pid: int):
     """
-    指定したプロセス内のOSスレッドを取得する。
-
-    各スレッドについて以下を返す。
-    - スレッドID
-    - User CPU Time
-    - System CPU Time
+    C言語のlibprocヘルパーを呼び出して、
+    指定プロセスのOSスレッド情報を取得する。
     """
 
+    # PIDの簡単な入力検証
+    if pid <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PID",
+        )
+
     try:
-        # PIDからプロセスを取得
+        # プロセスの存在と基本情報を確認
         process = psutil.Process(pid)
 
-        # プロセス内のスレッド一覧を取得
-        threads = process.threads()
+        # PID再利用を検出するため、作成時刻を記録
+        create_time = process.create_time()
+        name = process.name()
 
-        # JSONで返すデータを作成
+        # C言語の実行ファイルを子プロセスとして起動
+        # stdout: JSONデータ
+        # stderr: エラーメッセージ
+        result = subprocess.run(
+            [str(LIBPROC_HELPER), str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+
+        # Cプログラムが失敗した場合
+        if result.returncode != 0:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "message": "libproc could not read threads",
+                    "error": result.stderr.strip(),
+                },
+            )
+
+        # JSON文字列をPythonの辞書に変換
+        data = json.loads(result.stdout)
+
+        # Cヘルパーが返したPIDを確認
+        if data["pid"] != pid:
+            raise HTTPException(
+                status_code=502,
+                detail="Helper returned a different PID",
+            )
+
+        # PIDが途中で再利用されていないか確認
+        if process.create_time() != create_time:
+            raise HTTPException(
+                status_code=409,
+                detail="Process identity changed",
+            )
+
+        # 既存のJavaScriptが期待する形式に変換
         thread_list = []
 
-        for thread in threads:
+        for thread in data["threads"]:
             thread_list.append(
                 {
-                    # OSが管理するスレッド識別番号
-                    "tid": thread.id,
-                    # ユーザーモードの累積CPU時間
-                    "user_time": round(thread.user_time, 6),
-                    # カーネルモードの累積CPU時間
-                    "system_time": round(thread.system_time, 6),
+                    "tid": thread["id"],
+                    "user_time": thread["user_time"],
+                    "system_time": thread["system_time"],
+                    "run_state": thread["run_state"],
                 }
             )
 
         return {
             "pid": pid,
-            "name": process.name(),
-            "create_time": process.create_time(),
+            "name": name,
+            "create_time": create_time,
+            # 詳細取得できたスレッド数
             "thread_count": len(thread_list),
+            # OSが列挙したスレッド数
+            "enumerated_thread_count": data["thread_count"],
             "threads": thread_list,
         }
 
     except (psutil.NoSuchProcess, psutil.ZombieProcess):
-        raise HTTPException(status_code=404, detail="Process not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Process not found",
+        )
 
     except psutil.AccessDenied:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied",
+        )
+
+    except subprocess.TimeoutExpired:
+        raise HTTPException(
+            status_code=504,
+            detail="libproc helper timed out",
+        )
+
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not launch libproc helper: {exc}",
+        )
+
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        raise HTTPException(
+            status_code=502,
+            detail="Invalid JSON from libproc helper",
+        )
 
 
 # ========================================
